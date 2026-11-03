@@ -7,6 +7,7 @@
 |---|---|---|---|---|---|
 | E001 | `opencode models` returns `ServiceUnavailableError: Location plugins did not finish activating` | DEFERRED | 1 | Plugin activation race in the local CLI (v2.0.29) | Model IDs taken from `~/.config/opencode/chains.conf` instead. Re-check after the next CLI upgrade. |
 | E002 | `du -sh /home` exceeded the 120 s command timeout | FIXED | 1 | Home tree too large to walk interactively | Not needed for this task. Disk measured with `df -h`, which is O(1). |
+| E003 | `build.yml` run 41657529748 failed at "Setup Python": `No file matched to [requirements*.txt or **/pyproject.toml]` | FIXED | 1 | `actions/setup-python` with `cache: pip` aborts when the dependency file is absent — the normal state of a fresh repo. Same trap existed in setup-node, setup-go and setup-java. | Removed built-in action caching; added explicit `actions/cache` steps guarded by `hashFiles(...) != ''`. Verified green on run 41657621537. |
 
 ## Template
 

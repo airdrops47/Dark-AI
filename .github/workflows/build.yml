@@ -36,38 +36,34 @@ jobs:
       - name: Report free disk before
         run: df -h / | tail -1
 
-      # ---------- toolchains (each is a no-op when not selected) ----------
+      # ---------------------------------------------------------------
+      # Toolchains. Built-in action caching is deliberately NOT used:
+      # setup-python/setup-node/setup-go abort when the lockfile is
+      # absent, which is exactly the state of a fresh repo. Caching is
+      # done below with explicit hashFiles guards instead.
+      # ---------------------------------------------------------------
 
       - name: Setup Node
         if: matrix.stack == 'node'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: package-lock.json
 
       - name: Setup Python
         if: matrix.stack == 'python'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
 
       - name: Setup Rust
         if: matrix.stack == 'rust'
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        if: matrix.stack == 'rust'
-        uses: Swatinem/rust-cache@v2
 
       - name: Setup Go
         if: matrix.stack == 'go'
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-          cache: true
 
       - name: Setup Java
         if: matrix.stack == 'java'
@@ -75,9 +71,54 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
-      # ---------- install (skips cleanly if there is no manifest) ----------
+      # ---------------------------------------------------------------
+      # Caches, each guarded so an empty repo never fails here.
+      # ---------------------------------------------------------------
+
+      - name: Cache npm
+        if: matrix.stack == 'node' && hashFiles('package-lock.json') != ''
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+
+      - name: Cache pip
+        if: matrix.stack == 'python' && hashFiles('requirements*.txt', 'pyproject.toml') != ''
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements*.txt', 'pyproject.toml') }}
+          restore-keys: pip-${{ runner.os }}-
+
+      - name: Cache Rust
+        if: matrix.stack == 'rust' && hashFiles('Cargo.lock') != ''
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache Go
+        if: matrix.stack == 'go' && hashFiles('go.sum') != ''
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      - name: Cache Gradle
+        if: matrix.stack == 'java' && hashFiles('gradle/wrapper/gradle-wrapper.properties') != ''
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      # ---------------------------------------------------------------
+      # Install and build. Every branch degrades to a clean no-op.
+      # ---------------------------------------------------------------
 
       - name: Install dependencies
         run: |
@@ -92,7 +133,7 @@ jobs:
               elif [ -f pyproject.toml ]; then pip install -e .
               else echo "no python manifest, skipping"; fi ;;
             rust)
-              if [ -f Cargo.toml ]; then cargo fetch
+              if [ -f Cargo.toml ]; then cargo fetch --locked 2>/dev/null || cargo fetch
               else echo "no Cargo.toml, skipping"; fi ;;
             go)
               if [ -f go.mod ]; then go mod download
@@ -104,8 +145,6 @@ jobs:
               echo "stack=none, nothing to install" ;;
           esac
 
-      # ---------- build + test ----------
-
       - name: Build and test
         run: |
           set -euo pipefail
@@ -116,18 +155,24 @@ jobs:
                 npm test --if-present
               else echo "nothing to build"; fi ;;
             python)
-              python -m pytest -q || { echo "pytest failed or not present"; [ -f pytest.ini ] && exit 1 || exit 0; } ;;
+              if [ -f requirements.txt ] || [ -f pyproject.toml ] || [ -f pytest.ini ] || [ -f setup.py ]; then
+                python -m pytest -q
+              else echo "nothing to build"; fi ;;
             rust)
-              if [ -f Cargo.toml ]; then cargo build --locked --verbose; cargo test --locked --verbose
+              if [ -f Cargo.toml ]; then
+                cargo build --locked --verbose
+                cargo test --locked --verbose
               else echo "nothing to build"; fi ;;
             go)
-              if [ -f go.mod ]; then go build ./...; go test ./...
+              if [ -f go.mod ]; then
+                go build ./...
+                go test ./...
               else echo "nothing to build"; fi ;;
             java)
               if [ -f gradlew ]; then ./gradlew --no-daemon build
               else echo "nothing to build"; fi ;;
             none)
-              echo "smoke run: repository reachable, toolchain not requested" ;;
+              echo "smoke run: repo reachable, toolchain not requested" ;;
           esac
 
       - name: Report free disk after
