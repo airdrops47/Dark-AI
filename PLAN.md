@@ -23,7 +23,7 @@ A free, GitHub-based coding environment that:
 - [x] Remote build workflow
 - [x] Remote agent workflow
 - [x] Session helper script
-- [ ] First green smoke run
+- [x] First green smoke run
 
 ### P1 — Model chain hardening
 
