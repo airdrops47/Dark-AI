@@ -1,0 +1,128 @@
+name: agent-run
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task for the agent (plain text)"
+        required: true
+        type: string
+      model:
+        description: "Model id, provider/model"
+        required: false
+        default: "opencode/deepseek-v4.1-flash-free"
+        type: string
+      branch:
+        description: "Work branch to write to"
+        required: false
+        default: "agent/work"
+        type: string
+      continue_session:
+        description: "Resume the previous agent session instead of starting fresh"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: agent-${{ inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENCODE_MODEL: ${{ inputs.model }}
+
+    steps:
+      - name: Guard — require at least one provider credential
+        run: |
+          if [ -z "${OPENCODE_API_KEY}${OPENROUTER_API_KEY}${GROQ_API_KEY}" ]; then
+            echo "::error::No provider credential found."
+            echo "Add OPENCODE_API_KEY (or OPENROUTER_API_KEY / GROQ_API_KEY) under"
+            echo "Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "credential present"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare work branch
+        run: |
+          git config user.name  "dark-ai-bot"
+          git config user.email "dark-ai-bot@users.noreply.github.com"
+          BRANCH="${{ inputs.branch }}"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git checkout "$BRANCH"
+          else
+            git checkout -b "$BRANCH"
+          fi
+
+      - name: Install OpenCode
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Seed state for a cold agent
+        run: |
+          for f in STATE.md ERRORS.md PLAN.md AGENTS.md; do
+            [ -f "$f" ] || echo "# $f (auto-created by agent-run)" > "$f"
+          done
+
+      - name: Run agent
+        run: |
+          set -o pipefail
+          FLAGS=(--model "$OPENCODE_MODEL" --auto --print-logs)
+          [ "${{ inputs.continue_session }}" = "true" ] && FLAGS+=(--continue)
+          opencode run "${FLAGS[@]}" "${{ inputs.task }}" 2>&1 | tee agent-output.log
+
+      - name: Commit result
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no changes produced by this run"
+            exit 0
+          fi
+          git commit -m "agent: ${{ inputs.task }}"
+          git push origin "HEAD:${{ inputs.branch }}"
+
+      - name: Open pull request
+        if: inputs.branch != 'main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh pr list --head "${{ inputs.branch }}" --json number --jq 'length' | grep -qv '^0$'; then
+            gh pr create \
+              --base main \
+              --head "${{ inputs.branch }}" \
+              --title "agent: ${{ inputs.task }}" \
+              --body "Automated run.
+
+          **Task:** ${{ inputs.task }}
+          **Model:** \`${{ inputs.model }}\`
+          **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Review the diff before merging."
+          else
+            echo "a pull request already exists for this branch"
+          fi
+
+      - name: Upload agent log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-log-${{ github.run_number }}
+          path: agent-output.log
+          if-no-files-found: ignore
+          retention-days: 7

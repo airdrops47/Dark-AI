@@ -1,0 +1,47 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/deepseek-v4.1-flash-free",
+  "small_model": "opencode/cat-jam-free",
+  "instructions": ["AGENTS.md", "STATE.md", "PLAN.md", "ERRORS.md"],
+  "permissions": [
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "edit", "resource": "*", "effect": "allow" },
+    { "action": "subagent", "resource": "*", "effect": "allow" },
+    { "action": "skill", "resource": "*", "effect": "allow" },
+    { "action": "webfetch", "resource": "*", "effect": "allow" },
+    { "action": "websearch", "resource": "*", "effect": "allow" },
+    { "action": "question", "resource": "*", "effect": "allow" },
+    { "action": "read", "resource": ".env", "effect": "ask" },
+    { "action": "read", "resource": ".env.*", "effect": "ask" },
+    { "action": "read", "resource": ".dev.vars", "effect": "ask" },
+    { "action": "edit", "resource": ".env", "effect": "ask" },
+    { "action": "edit", "resource": ".env.*", "effect": "ask" },
+    { "action": "edit", "resource": ".dev.vars", "effect": "ask" },
+    { "action": "shell", "resource": "git status*", "effect": "allow" },
+    { "action": "shell", "resource": "git diff*", "effect": "allow" },
+    { "action": "shell", "resource": "git log*", "effect": "allow" },
+    { "action": "shell", "resource": "git add*", "effect": "allow" },
+    { "action": "shell", "resource": "git commit*", "effect": "allow" },
+    { "action": "shell", "resource": "gh run*", "effect": "allow" },
+    { "action": "shell", "resource": "gh workflow*", "effect": "allow" },
+    { "action": "shell", "resource": "gh pr*", "effect": "allow" },
+    { "action": "shell", "resource": "git push*", "effect": "ask" },
+    { "action": "shell", "resource": "git reset --hard*", "effect": "ask" },
+    { "action": "shell", "resource": "git clean*", "effect": "ask" },
+    { "action": "shell", "resource": "rm *", "effect": "ask" },
+    { "action": "shell", "resource": "sudo *", "effect": "ask" }
+  ],
+  "agent": {
+    "build": {
+      "description": "Default build agent for this thin-client environment.",
+      "mode": "primary"
+    },
+    "review": {
+      "description": "Read-only review of a change for correctness and gaps.",
+      "mode": "subagent"
+    }
+  },
+  "mcp": {}
+}
